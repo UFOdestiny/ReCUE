@@ -66,3 +66,7 @@ CLAUDE.md
 popllm
 .agent*
 analysis
+
+# Keep reproducible research pilots even when a global ignore excludes analysis/.
+!analysis/
+!analysis/*.py
