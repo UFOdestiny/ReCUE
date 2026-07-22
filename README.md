@@ -1,92 +1,103 @@
-# CHAINUQ
+# Answer-Confidence Dynamics (ACD)
 
-CHAINUQ is a two-stage uncertainty pipeline for reasoning tasks with frozen LLMs.
-It first trains a lightweight conclusion-focused uncertainty head on cached token
-features, then refines the sample-level score with reasoning-aware post-hoc
-calibration.
+Judge-free, verifier-supervised uncertainty quantification (UQ) for **reasoning LLMs**.
 
-## Pipeline
+ACD reads uncertainty from **how a model's answer evolves along a single reasoning
+trace**, rather than from repeated sampling. We take one completed chain-of-thought,
+cut it at reasoning-step boundaries, and cheaply force-decode
+`The final answer is \boxed{...}` at each cut (reusing the vLLM prefix cache, so all
+probes together cost ≈2% extra generated tokens). This yields, per step, an
+intermediate **answer** and the model's **forced-answer confidence** (logprob). A
+lightweight head over the resulting trajectory features predicts response correctness.
 
-```text
-Generate -> Judge -> Cleanup -> Train -> Evaluate
-```
+Correctness labels come from a deterministic checker (`math_verify`) — **no judge
+model anywhere**, so there is no judge-induced label leakage.
 
-1. `scripts/generate.py` runs backbone inference, extracts claims, and caches token features.
-2. `scripts/judge.py` verifies conclusions and reasoning claims with an LLM judge when needed.
-3. `scripts/cleanup_pending_claims.py` removes unresolved examples and rewrites caches into compact split storage.
-4. `scripts/train.py` trains a lightweight uncertainty head on cached conclusion features.
-5. `scripts/evaluate.py` evaluates the trained head and optionally applies post-hoc calibration.
+## Key results
 
-## Included head family
+Full numbers and interpretation: [`docs/RESULTS.md`](docs/RESULTS.md).
 
-The release keeps the CHAINUQ head and its ablations:
-
-- `chainuq`
-- `uq_abl_v1`
-- `uq_abl_v2`
-- `uq_abl_v3`
-- `uq_abl_v4`
-
+- **Best single-generation UQ.** Macro AUROC 0.79 over 31 model×dataset cells (7 model
+  families), beating every same-cost baseline (P(True), self-certainty, DeepConf,
+  logprob) and the answer-convergence prior-art by +0.15.
+- **The signal is trajectory dynamics, not the endpoint.** Ablation: adding the
+  confidence *trajectory* on top of answer-convergence + final-answer confidence lifts
+  AUROC by +0.05 (significant in 14/31 cells); removing the final value entirely barely
+  changes it.
+- **Beats self-consistency at matched cost.** Fusing ACD with 8-sample self-consistency
+  beats SC@8 alone (+0.02 AUROC, significant in 10/25 cells) — because ACD detects the
+  *confident-consensus errors* self-consistency is structurally blind to (on
+  high-agreement responses SC is at chance ~0.5, ACD stays ~0.66).
 
 ## Layout
 
 ```text
-config.py
-data/
-engine/
-models/
-  features/
-  heads/
-  wrapper.py
-scripts/
-utils/
-requirements.txt
+acd/                    core library
+  env.py                .env loading, paths, math answer parsing & verification
+  data.py               verifiable-answer datasets (GSM8K, MATH500, Minerva, Olympiad, AMC23)
+  generate.py           vLLM generation of reasoning traces (+ per-sample logprobs)   [CLI]
+  probe.py              intermediate-answer probe (identity trajectory)               [CLI]
+  features.py           answer-stabilization / confidence-dynamics features
+  baselines.py          single-pass UQ baselines (logprob, entropy, DeepConf, self-certainty)
+  metrics.py            AUROC / AURC / ECE / risk-at-coverage
+scripts/                runnable entrypoints & orchestration
+  run_probe_confidence.py   confidence-dynamics probe (answer + forced-answer logprob) [CLI]
+  run_ptrue.py              P(True) self-eval baseline                                 [CLI]
+  build_cache.py            derive labels / sampled-answers / features caches
+  build_matrix.sh           generate+probe a model×dataset matrix (reads .env)
+  run_analysis.sh           run all paper experiments over cached cells
+  matrix.txt                example job list for build_matrix.sh
+experiments/            main-paper analyses (main comparison, ablations, mechanism, variance, hybrid)
+analysis/               exploratory studies & negative results (extra probes, alternative baselines)
+docs/RESULTS.md         consolidated results & interpretation
+```
+
+## Setup
+
+```bash
+pip install -r requirements.txt          # torch, vllm, transformers, scikit-learn, math_verify, ...
+cp .env.example .env                      # then edit paths (see below)
+```
+
+All paths are read from a gitignored `.env` (anonymized; no absolute user paths in code):
+
+```ini
+MODELS_ROOT=/path/to/models          # dir of local model folders (names match --model)
+DATASETS_ROOT=/path/to/hf_hub_cache  # HuggingFace datasets cache
+EXP_ROOT=/path/to/experiment_outputs # all caches & results land here
 ```
 
 ## Quick start
 
-Install dependencies:
-
 ```bash
-pip install -r requirements.txt
+# 1. generate reasoning traces + intermediate-answer/confidence probes for a matrix
+CUDA_VISIBLE_DEVICES=0 bash scripts/build_matrix.sh scripts/matrix.txt
+
+# 2. run all analyses over whatever cells exist in $EXP_ROOT
+bash scripts/run_analysis.sh
 ```
 
-Generate cached features:
+Or drive a single stage directly (everything is a `python -m` module):
 
 ```bash
-python scripts/generate.py --dataset hotpotqa --split train,validation,test
+python -m acd.generate --model Qwen3-8B --dataset math500 --k 8 --tag math500_qwen8b_k8
+python -m acd.probe                 --model Qwen3-8B --gen-tag math500_qwen8b_k8
+python -m scripts.run_probe_confidence --model Qwen3-8B --gen-tag math500_qwen8b_k8
+python -m scripts.build_cache
+python -m experiments.main_comparison --tags math500_qwen8b_k8 --out $EXP_ROOT/main.json
 ```
 
-Judge pending examples:
+## Caches (under `$EXP_ROOT`)
 
-```bash
-python scripts/judge.py --cache_dir artifacts/cached_features/<run>/<dataset>/<model> --split train,validation,test
-```
+| dir | contents |
+|-----|----------|
+| `gen/`      | reasoning traces + k self-consistency samples + logprobs |
+| `probe/`    | intermediate-answer trajectory (identity) |
+| `conf/`     | intermediate-answer + forced-answer confidence trajectory |
+| `labels/`   | deterministic correctness labels (`math_verify`) |
+| `sampans/`  | extracted answers of the k samples (for self-consistency) |
+| `feats/`, `cdyn/` | precomputed convergence / confidence-dynamics features |
+| `ptrue/`    | P(True) baseline scores |
 
-Normalize caches:
-
-```bash
-python scripts/cleanup_pending_claims.py --cache_dir artifacts/cached_features/<run>/<dataset>/<model>
-```
-
-Train a head:
-
-```bash
-python scripts/train.py --head_type chainuq --cache_dir artifacts/cached_features/<run>/<dataset>/<model>
-```
-
-Evaluate with optional post-hoc calibration:
-
-```bash
-python scripts/evaluate.py \
-  --head_path artifacts/results/<job>/train/chainuq/final_model \
-  --cache_dir artifacts/cached_features/<run>/<dataset>/<model> \
-  --split test \
-  --enable_posthoc \
-  --posthoc_method reasoning_logistic_isotonic
-```
-
-## Configuration
-
-All runtime knobs live in `config.py` and can be overridden with environment
-variables. By default, outputs are written under `artifacts/` inside this repo.
+Once caches exist, all `experiments/` and `analysis/` scripts recompute in seconds
+without any GPU.

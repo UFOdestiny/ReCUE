@@ -1,0 +1,14 @@
+# Generation + probe matrix: model|dataset|max_tokens|thinking|tag
+# Thinking models use <think>/[THINK]; set thinking=1. Tags: {dataset}_{modelkey}_k8.
+# Edit MODELS_ROOT in .env; model names must match subdirs there.
+Qwen3-4B|gsm8k|4096|1|gsm8k_qwen4b_k8
+Qwen3-4B|math500|4096|1|math500_qwen4b_k8
+Qwen3-4B|minerva|8192|1|minerva_qwen4b_k8
+Qwen3-4B|olympiad|8192|1|olympiad_qwen4b_k8
+Qwen3-4B|amc23|8192|1|amc23_qwen4b_k8
+Qwen3-8B|gsm8k|4096|1|gsm8k_qwen8b_k8
+Qwen3-8B|math500|4096|1|math500_qwen8b_k8
+Qwen3-8B|minerva|8192|1|minerva_qwen8b_k8
+Qwen3-8B|olympiad|8192|1|olympiad_qwen8b_k8
+Qwen3-8B|amc23|8192|1|amc23_qwen8b_k8
+# add more backbones (Qwen3-14B, Qwen3.5-9B, Phi-4-reasoning, Ministral-3-14B-Reasoning-2512) as needed

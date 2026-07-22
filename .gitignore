@@ -56,17 +56,14 @@ hf_cache/
 *.err
 slurm-*.out
 
-# Secrets
+# Secrets / local
 .env
 .env.*
+!.env.example
 .claude*
-latex
 .codex
 CLAUDE.md
-popllm
 .agent*
-analysis
 
-# Keep reproducible research pilots even when a global ignore excludes analysis/.
-!analysis/
-!analysis/*.py
+# Local symlink to shared model/data storage
+popllm
