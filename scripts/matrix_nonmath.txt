@@ -1,0 +1,15 @@
+# Non-math generalization matrix (P0-2): model|dataset|limit|max_tokens|thinking|tag
+# 3 model families x (3 BBH tasks + GPQA-diamond). MC exact-match, judge-free.
+# BBH tasks have 250 q each; GPQA-diamond 198. Reasoning models -> thinking=1.
+Qwen3-8B|bbh_logical|0|6144|1|bbh_logical_qwen8b_k8
+Qwen3-8B|bbh_tracking|0|6144|1|bbh_tracking_qwen8b_k8
+Qwen3-8B|bbh_date|0|4096|1|bbh_date_qwen8b_k8
+Qwen3-8B|gpqa|0|8192|1|gpqa_qwen8b_k8
+Phi-4-reasoning|bbh_logical|0|6144|1|bbh_logical_phi4r_k8
+Phi-4-reasoning|bbh_tracking|0|6144|1|bbh_tracking_phi4r_k8
+Phi-4-reasoning|bbh_date|0|4096|1|bbh_date_phi4r_k8
+Phi-4-reasoning|gpqa|0|8192|1|gpqa_phi4r_k8
+Ministral-3-14B-Reasoning-2512|bbh_logical|0|6144|1|bbh_logical_ministral_k8
+Ministral-3-14B-Reasoning-2512|bbh_tracking|0|6144|1|bbh_tracking_ministral_k8
+Ministral-3-14B-Reasoning-2512|bbh_date|0|4096|1|bbh_date_ministral_k8
+Ministral-3-14B-Reasoning-2512|gpqa|0|8192|1|gpqa_ministral_k8

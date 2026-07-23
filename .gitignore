@@ -64,6 +64,7 @@ slurm-*.out
 .codex
 CLAUDE.md
 .agent*
+latex
 
 # Local symlink to shared model/data storage
 popllm

@@ -100,11 +100,11 @@ def main():
     meta = []
     for qi, r in enumerate(gen):
         try:
-            base = tok.apply_chat_template(build_messages(r["question"]), tokenize=False,
-                                           add_generation_prompt=True, enable_thinking=True)
+            base = tok.apply_chat_template(build_messages(r["question"], mc=(r.get("type") == "mc")),
+                                           tokenize=False, add_generation_prompt=True, enable_thinking=True)
         except TypeError:
-            base = tok.apply_chat_template(build_messages(r["question"]), tokenize=False,
-                                           add_generation_prompt=True)
+            base = tok.apply_chat_template(build_messages(r["question"], mc=(r.get("type") == "mc")),
+                                           tokenize=False, add_generation_prompt=True)
         # detect thinking marker style from the actual generation
         ptext = r["primary_text"]
         if "<think>" in ptext:

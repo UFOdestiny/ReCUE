@@ -22,9 +22,18 @@ PROMPT_TEMPLATE = (
     "End your response with the final answer in \\boxed{{}}.\n\n{question}"
 )
 
+# Multiple-choice reasoning tasks: force a single option LETTER in \boxed{} so the
+# same forced-answer probe / extract_boxed_head machinery works judge-free.
+MC_PROMPT_TEMPLATE = (
+    "Answer the following multiple-choice question. Reason step by step, then "
+    "end your response with the letter of the correct option in \\boxed{{}} "
+    "(for example \\boxed{{A}}).\n\n{question}"
+)
 
-def build_messages(question: str):
-    return [{"role": "user", "content": PROMPT_TEMPLATE.format(question=question)}]
+
+def build_messages(question: str, mc: bool = False):
+    tmpl = MC_PROMPT_TEMPLATE if mc else PROMPT_TEMPLATE
+    return [{"role": "user", "content": tmpl.format(question=question)}]
 
 
 def main():
@@ -63,7 +72,7 @@ def main():
                 msgs, tokenize=False, add_generation_prompt=True,
             )
 
-    prompts = [render(build_messages(r["question"])) for r in rows]
+    prompts = [render(build_messages(r["question"], mc=(r.get("type") == "mc"))) for r in rows]
 
     llm = LLM(model=mpath, trust_remote_code=True, dtype="bfloat16",
               gpu_memory_utilization=args.gpu_mem, max_model_len=max(4096, args.max_tokens + 2048),
@@ -122,6 +131,7 @@ def main():
         results.append({
             "id": r["id"], "question": r["question"], "gold": r["gold"],
             "gold_raw": r.get("gold_raw", r["gold"]),
+            "type": r.get("type", "math"), "n_choices": r.get("n_choices"),
             "primary_text": po.text,
             "chosen_logprobs": chosen_lp,
             "topk_logprobs": topk_lp,

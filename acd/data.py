@@ -114,6 +114,13 @@ LOADERS = {
 
 def load_dataset(name: str, limit: int = 0) -> List[Dict[str, Any]]:
     name = name.lower()
+    # non-math multiple-choice reasoning tasks (P0-2 generalization)
+    try:
+        from acd import data_nonmath as dnm
+        if name in dnm.MC_TASKS:
+            return dnm.LOADERS[name](limit=limit)
+    except Exception:
+        pass
     if name == "gsm8k":
         return load_gsm8k(limit=limit)
     return LOADERS[name](limit=limit)
@@ -134,7 +141,11 @@ def _get_mv():
 
 
 def verify(row: Dict[str, Any], generation_text: str) -> int:
-    """Deterministic math verification via math_verify (robust), regex fallback."""
+    """Deterministic verification. Multiple-choice tasks -> exact letter match;
+    math tasks -> math_verify (robust) with regex fallback. No judge model."""
+    if row.get("type") == "mc":
+        from acd import data_nonmath as dnm
+        return dnm.verify_mc(row, generation_text)
     gold_raw = row.get("gold_raw") or row.get("gold")
     mv = _get_mv()
     if mv and gold_raw:

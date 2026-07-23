@@ -39,11 +39,11 @@ def main():
     flat, meta = [], []
     for qi, g in enumerate(gen):
         try:
-            base = tok.apply_chat_template(build_messages(g["question"]), tokenize=False,
-                                           add_generation_prompt=True, enable_thinking=True)
+            base = tok.apply_chat_template(build_messages(g["question"], mc=(g.get("type") == "mc")),
+                                           tokenize=False, add_generation_prompt=True, enable_thinking=True)
         except TypeError:
-            base = tok.apply_chat_template(build_messages(g["question"]), tokenize=False,
-                                           add_generation_prompt=True)
+            base = tok.apply_chat_template(build_messages(g["question"], mc=(g.get("type") == "mc")),
+                                           tokenize=False, add_generation_prompt=True)
         ptext = g["primary_text"]
         if "<think>" in ptext:
             ot, ct = "<think>", "</think>"

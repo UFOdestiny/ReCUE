@@ -1,7 +1,16 @@
 import json,glob,os,numpy as np
 from acd.env import EXP_ROOT, extract_pred_math
 from acd import data as dv
+from acd import data_nonmath as dnm
 from acd import features as D
+
+def _sample_ans(x):
+    """Extract the per-sample answer for self-consistency: MC letter for mc rows,
+    else the math prediction. Judge-free either way."""
+    if x.get("type") == "mc":
+        nch = x.get("n_choices") or 26
+        return [dnm.extract_choice(s, nch) for s in x.get("samples", [])]
+    return [extract_pred_math(s) for s in x.get("samples", [])]
 FO=["agree_frac","last_half_agree","conv_frac","flip_rate","n_distinct","inter_entropy","none_frac","final_stable_run"]
 for sub in ["labels","sampans","feats"]:
     (EXP_ROOT/sub).mkdir(exist_ok=True)
@@ -16,7 +25,7 @@ for g in sorted(glob.glob(str(EXP_ROOT/"gen"/"*_k8.json"))):
         if not lf.exists():
             lf.write_text(json.dumps({x["id"]:dv.verify(x,x["primary_text"]) for x in gen})); print("labels",t)
         if not sf.exists():
-            sf.write_text(json.dumps({x["id"]:[extract_pred_math(s) for s in x.get("samples",[])] for x in gen})); print("sampans",t)
+            sf.write_text(json.dumps({x["id"]:_sample_ans(x) for x in gen})); print("sampans",t)
     if not ff.exists() and pf.exists():
         pr=json.load(open(pf))
         d={r["id"]:{"feat":[D.features(r)[k] for k in FO],"dyn_scalar":D.scalar_confidence(r)} for r in pr}
