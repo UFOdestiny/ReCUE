@@ -5,16 +5,16 @@ Three sub-experiments over the cached 31-cell matrix (all judge-free):
 --exp stress   P1-1 self-consistency blind-spot STRESS TEST (pre-registered).
    Thresholds fixed a priori: SC vote-fraction >= {0.625, 0.75, 0.875, 1.0}.
    Also stratify by SC-entropy quantile (low/med/high). On each high-consensus
-   subset report n, acc, #wrong, SC-AUROC (~0.5 by construction), ChainUQ AUROC,
+   subset report n, acc, #wrong, SC-AUROC (~0.5 by construction), ReCUE AUROC,
    and the matched-8x fusion gain. Statement: in near-constant-SC regions,
-   does ChainUQ still rank confident-consensus errors?
+   does ReCUE still rank confident-consensus errors?
 
---exp labeleff P1-3 label efficiency. Train ChainUQ / seq-only / CONV+FINAL on
+--exp labeleff P1-3 label efficiency. Train ReCUE / seq-only / CONV+FINAL on
    {1,2,5,10,25,50,100}% of a cell's labeled problems (fixed test fold), report
    AUROC vs #labeled examples + labels needed to reach 95% of full-data AUROC.
    Also a pooled cross-cell head to test if multi-domain data cuts target labels.
 
---exp capacity P0-4 classifier-capacity control. Same ChainUQ features, swap the
+--exp capacity P0-4 classifier-capacity control. Same ReCUE features, swap the
    head: logistic / RandomForest / GradientBoosting / MLP. Shows the gain is the
    OBSERVATION (features), not classifier capacity.
 """
@@ -37,8 +37,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import StratifiedKFold
 
-from acd.env import EXP_ROOT
-from acd import baselines as S
+from recue.env import EXP_ROOT
+from recue import baselines as S
 
 SEEDS = [2026, 7, 13, 42, 100]
 
@@ -118,7 +118,7 @@ def load(tag):
                 FINAL=np.array(FINAL), y=y, votes=np.array(votes), ents=np.array(ents))
 
 
-def chainuq_feats(c):
+def recue_feats(c):
     return np.hstack([c["CONV"], c["CDYN"], c["SEQ"]])
 
 
@@ -133,8 +133,8 @@ def exp_stress(tags, out):
         if c is None:
             continue
         y = c["y"]; votes = c["votes"]
-        cq = oof(chainuq_feats(c), y)
-        fusion = oof(np.hstack([chainuq_feats(c), c["votes"].reshape(-1, 1),
+        cq = oof(recue_feats(c), y)
+        fusion = oof(np.hstack([recue_feats(c), c["votes"].reshape(-1, 1),
                                 c["ents"].reshape(-1, 1)]), y)
         for th in THRESH:
             mask = votes >= th
@@ -152,12 +152,12 @@ def exp_stress(tags, out):
             cq_au = roc_auc_score(ys, cq[mask])
             fu_au = roc_auc_score(ys, fusion[mask])
             rows.append({"tag": tag, "thresh": th, "n": n, "acc": float(ys.mean()),
-                         "n_wrong": nwrong, "sc_auroc": sc_au, "chainuq_auroc": cq_au,
+                         "n_wrong": nwrong, "sc_auroc": sc_au, "recue_auroc": cq_au,
                          "fusion_auroc": fu_au})
             agg[th].append((n, cq_au, fu_au, nwrong))
     print("\n=== P1-1 SELF-CONSISTENCY BLIND-SPOT STRESS TEST ===")
     print("(SC AUROC ~0.5 by construction on high-consensus subsets)")
-    print(f"{'vote>=':>8s}{'cells':>7s}{'tot_n':>8s}{'tot_wrong':>10s}{'ChainUQ':>9s}{'fusion':>8s}")
+    print(f"{'vote>=':>8s}{'cells':>7s}{'tot_n':>8s}{'tot_wrong':>10s}{'ReCUE':>9s}{'fusion':>8s}")
     for th in THRESH:
         v = agg[th]
         if not v:
@@ -173,7 +173,7 @@ def exp_stress(tags, out):
 
 def exp_labeleff(tags, out):
     FRACS = [0.01, 0.02, 0.05, 0.10, 0.25, 0.50, 1.0]
-    FEATS = {"chainuq": chainuq_feats,
+    FEATS = {"recue": recue_feats,
              "seq-only": lambda c: c["SEQ"],
              "conv+final": lambda c: np.hstack([c["CONV"], c["FINAL"]])}
     curves = {f: defaultdict(list) for f in FEATS}
@@ -215,11 +215,11 @@ def exp_labeleff(tags, out):
     print(f"{'frac':>7s}" + "".join(f"{f:>12s}" for f in FEATS))
     for fr in FRACS:
         print(f"{fr:7.2f}" + "".join(f"{np.mean(curves[f][fr]):12.3f}" if curves[f][fr] else f"{'-':>12s}" for f in FEATS))
-    # labels to reach 95% of full-data AUROC for chainuq
-    full = np.mean(curves["chainuq"][1.0])
+    # labels to reach 95% of full-data AUROC for recue
+    full = np.mean(curves["recue"][1.0])
     target = 0.95 * full
-    reach = next((fr for fr in FRACS if curves["chainuq"][fr] and np.mean(curves["chainuq"][fr]) >= target), 1.0)
-    print(f"ChainUQ full-data macro {full:.3f}; reaches 95% ({target:.3f}) at ~{reach*100:.0f}% labels")
+    reach = next((fr for fr in FRACS if curves["recue"][fr] and np.mean(curves["recue"][fr]) >= target), 1.0)
+    print(f"ReCUE full-data macro {full:.3f}; reaches 95% ({target:.3f}) at ~{reach*100:.0f}% labels")
     if out:
         json.dump({"macro": {f: {str(fr): float(np.mean(curves[f][fr])) if curves[f][fr] else None
                                  for fr in FRACS} for f in FEATS},
@@ -237,13 +237,13 @@ def exp_capacity(tags, out):
         c = load(tag)
         if c is None:
             continue
-        y = c["y"]; X = chainuq_feats(c)
+        y = c["y"]; X = recue_feats(c)
         row = {"tag": tag}
         for h in HEADS:
             au = roc_auc_score(y, oof(X, y, kind=h, seeds=[2026, 7, 13]))
             row[h] = au; agg[h].append(au)
         rows.append(row)
-    print("\n=== P0-4 CLASSIFIER-CAPACITY CONTROL (same ChainUQ features) ===")
+    print("\n=== P0-4 CLASSIFIER-CAPACITY CONTROL (same ReCUE features) ===")
     print(f"{'head':>10s}{'macro AUROC':>14s}")
     for h in HEADS:
         print(f"{h:>10s}{np.mean(agg[h]):14.3f}")

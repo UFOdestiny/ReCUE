@@ -1,8 +1,8 @@
 """P0-2 non-math generalization analysis (More_EXP.md Sec 2.2 P0-2).
 
 Two layers, both judge-free (MC exact-match labels):
-  1. in-domain non-math : train+eval ChainUQ (5-seed CV) on each non-math cell,
-     vs same-cost baselines + SC@{2,4,8}. Proves ChainUQ doesn't depend on a math
+  1. in-domain non-math : train+eval ReCUE (5-seed CV) on each non-math cell,
+     vs same-cost baselines + SC@{2,4,8}. Proves ReCUE doesn't depend on a math
      answer parser.
   2. math -> non-math transfer : head trained ONLY on the 31 math cells, applied
      zero-shot to each non-math cell. Stronger generalization evidence.
@@ -30,9 +30,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import StratifiedKFold
 
-from acd.env import EXP_ROOT
-from acd import baselines as S
-from acd import metrics as UQ
+from recue.env import EXP_ROOT
+from recue import baselines as S
+from recue import metrics as UQ
 
 SEEDS = [2026, 7, 13, 42, 100]
 
@@ -114,7 +114,7 @@ def main():
     indom = []
     print("\n=== P0-2 layer 1: IN-DOMAIN non-math (5-seed CV AUROC) ===")
     print(f"{'cell':26s}{'n':>5s}{'acc':>6s}{'wrong':>6s}{'logp':>6s}{'selfc':>6s}"
-          f"{'C+F':>6s}{'ChainUQ':>8s}{'SC@8':>6s}")
+          f"{'C+F':>6s}{'ReCUE':>8s}{'SC@8':>6s}")
     for tag in args.nonmath_tags:
         c = load(tag)
         if c is None:
@@ -127,7 +127,7 @@ def main():
         row = {"tag": tag, "n": int(len(y)), "acc": float(y.mean()), "n_wrong": nwrong,
                "logp": a(c["logp"]), "self_certainty": a(c["selfc"]),
                "conv+final": roc_auc_score(y, oof(np.hstack([c["CONV"], c["FINAL"]]), y)),
-               "chainuq": roc_auc_score(y, oof(cq(c), y))}
+               "recue": roc_auc_score(y, oof(cq(c), y))}
         if any(c["ans"]):
             for k in (2, 4, 8):
                 row[f"sc@{k}"] = roc_auc_score(y, np.array([sc(x, k) for x in c["ans"]]))
@@ -135,30 +135,30 @@ def main():
         indom.append(row)
         flag = "" if row["enough"] else "  (< min-wrong, excl. from macro)"
         print(f"{tag:26s}{row['n']:5d}{row['acc']:6.3f}{nwrong:6d}{row['logp']:6.3f}"
-              f"{row['self_certainty']:6.3f}{row['conv+final']:6.3f}{row['chainuq']:8.3f}"
+              f"{row['self_certainty']:6.3f}{row['conv+final']:6.3f}{row['recue']:8.3f}"
               f"{row.get('sc@8', float('nan')):6.3f}{flag}")
     good = [r for r in indom if r["enough"]]
     if good:
-        for m in ["logp", "self_certainty", "conv+final", "chainuq", "sc@8"]:
+        for m in ["logp", "self_certainty", "conv+final", "recue", "sc@8"]:
             vals = [r[m] for r in good if m in r]
             if vals:
                 print(f"  macro {m:14s} {np.mean(vals):.3f}  (over {len(vals)} cells w/ >= {args.min_wrong} errors)")
-        d = np.mean([r["chainuq"] - r["conv+final"] for r in good])
-        beat = sum(1 for r in good if r["chainuq"] > r["conv+final"])
-        print(f"  ChainUQ - CONV+FINAL macro {d:+.3f}; ChainUQ wins {beat}/{len(good)}")
+        d = np.mean([r["recue"] - r["conv+final"] for r in good])
+        beat = sum(1 for r in good if r["recue"] > r["conv+final"])
+        print(f"  ReCUE - CONV+FINAL macro {d:+.3f}; ReCUE wins {beat}/{len(good)}")
 
     # ---------- layer 2: math -> non-math transfer ----------
     print("\n=== P0-2 layer 2: MATH -> NON-MATH transfer (zero-shot head) ===")
     srcs = [load(t) for t in args.math_tags]
     srcs = [s for s in srcs if s is not None and len(s["y"]) >= 20]
-    FEATS = {"chainuq": cq, "conv+final": lambda c: np.hstack([c["CONV"], c["FINAL"]]),
+    FEATS = {"recue": cq, "conv+final": lambda c: np.hstack([c["CONV"], c["FINAL"]]),
              "seq-only": lambda c: c["SEQ"]}
     clfs = {}
     for fs, fn in FEATS.items():
         Xs = clean(np.vstack([fn(s) for s in srcs])); ys = np.concatenate([s["y"] for s in srcs])
         clfs[fs] = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000)).fit(Xs, ys)
     trans = []
-    print(f"{'cell':26s}{'n':>5s}{'wrong':>6s}{'chainuq':>8s}{'C+F':>6s}{'seq':>6s}{'Δ':>7s}")
+    print(f"{'cell':26s}{'n':>5s}{'wrong':>6s}{'recue':>8s}{'C+F':>6s}{'seq':>6s}{'Δ':>7s}")
     for tag in args.nonmath_tags:
         c = load(tag)
         if c is None:
@@ -169,14 +169,14 @@ def main():
         au = {fs: roc_auc_score(y, clfs[fs].predict_proba(clean(FEATS[fs](c)))[:, 1]) for fs in FEATS}
         base = max(au["conv+final"], au["seq-only"])
         row = {"tag": tag, "n": int(len(y)), "n_wrong": nwrong, "au": au,
-               "delta": au["chainuq"] - base, "enough": nwrong >= args.min_wrong}
+               "delta": au["recue"] - base, "enough": nwrong >= args.min_wrong}
         trans.append(row)
         flag = "" if row["enough"] else "  (excl. macro)"
-        print(f"{tag:26s}{row['n']:5d}{nwrong:6d}{au['chainuq']:8.3f}{au['conv+final']:6.3f}"
+        print(f"{tag:26s}{row['n']:5d}{nwrong:6d}{au['recue']:8.3f}{au['conv+final']:6.3f}"
               f"{au['seq-only']:6.3f}{row['delta']:+7.3f}{flag}")
     goodt = [r for r in trans if r["enough"]]
     if goodt:
-        print(f"  macro ChainUQ transfer {np.mean([r['au']['chainuq'] for r in goodt]):.3f} "
+        print(f"  macro ReCUE transfer {np.mean([r['au']['recue'] for r in goodt]):.3f} "
               f"| Δ vs best base {np.mean([r['delta'] for r in goodt]):+.3f} "
               f"| Δ>0 {sum(1 for r in goodt if r['delta']>0)}/{len(goodt)}")
 

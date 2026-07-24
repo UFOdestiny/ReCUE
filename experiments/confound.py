@@ -20,8 +20,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import StratifiedKFold
 
-from acd.env import EXP_ROOT
-from acd import baselines as S
+from recue.env import EXP_ROOT
+from recue import baselines as S
 
 FEAT = ["agree_frac", "last_half_agree", "conv_frac", "flip_rate",
         "n_distinct", "inter_entropy", "none_frac", "final_stable_run"]

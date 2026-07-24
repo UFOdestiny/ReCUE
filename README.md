@@ -1,103 +1,137 @@
-# Answer-Confidence Dynamics (ACD)
+# ReCUE: Answer Re-Commitment for Compute-Aware Uncertainty in Reasoning Models
 
-Judge-free, verifier-supervised uncertainty quantification (UQ) for **reasoning LLMs**.
+Judge-free, single-trace uncertainty quantification (UQ) for mathematical
+reasoning LLMs. ReCUE reads whether a model still **re-commits** to the answer it
+returned, from **one completed reasoning trace**, instead of resampling many full
+trajectories.
 
-ACD reads uncertainty from **how a model's answer evolves along a single reasoning
-trace**, rather than from repeated sampling. We take one completed chain-of-thought,
-cut it at reasoning-step boundaries, and cheaply force-decode
-`The final answer is \boxed{...}` at each cut (reusing the vLLM prefix cache, so all
-probes together cost ≈2% extra generated tokens). This yields, per step, an
-intermediate **answer** and the model's **forced-answer confidence** (logprob). A
-lightweight head over the resulting trajectory features predicts response correctness.
+ReCUE combines two orthogonal single-trace views under a shared lightweight head:
 
-Correctness labels come from a deterministic checker (`math_verify`) — **no judge
-model anywhere**, so there is no judge-induced label leakage.
+- **ARC — Answer Re-Commitment (active).** Re-elicit a short answer at the
+  *completed* reasoning prefix (`The final answer is \boxed{...}`) and represent
+  its **agreement** with the originally returned answer together with its
+  **likelihood** and **confidence**. Because the reasoning prefix is unchanged,
+  this reuses the vLLM KV cache and decodes only a short answer suffix — about
+  **3% added latency**, not a second generation.
+- **TUP — Trace Uncertainty Profile (passive).** Summarize token-level
+  uncertainty already available from the primary generation (binned log-prob and
+  entropy shape, slopes, extrema, low-confidence fraction). No extra decoding.
+
+Correctness labels come from a **deterministic verifier** (`math_verify` for math,
+exact option-letter match for multiple choice) — **no LLM judge anywhere**, so
+there is no judge-induced label leakage.
 
 ## Key results
 
-Full numbers and interpretation: [`docs/RESULTS.md`](docs/RESULTS.md).
+Across **30 model–dataset cells** (six reasoning models × five math benchmarks,
+eight samples per problem):
 
-- **Best single-generation UQ.** Macro AUROC 0.79 over 31 model×dataset cells (7 model
-  families), beating every same-cost baseline (P(True), self-certainty, DeepConf,
-  logprob) and the answer-convergence prior-art by +0.15.
-- **The signal is trajectory dynamics, not the endpoint.** Ablation: adding the
-  confidence *trajectory* on top of answer-convergence + final-answer confidence lifts
-  AUROC by +0.05 (significant in 14/31 cells); removing the final value entirely barely
-  changes it.
-- **Beats self-consistency at matched cost.** Fusing ACD with 8-sample self-consistency
-  beats SC@8 alone (+0.02 AUROC, significant in 10/25 cells) — because ACD detects the
-  *confident-consensus errors* self-consistency is structurally blind to (on
-  high-agreement responses SC is at chance ~0.5, ACD stays ~0.66).
+- **Matches 8-sample self-consistency at ~1× cost.** ReCUE reaches **0.894 macro
+  AUROC** from one completed trace plus one cached answer probe, statistically
+  matching SC@8 (0.878) while adding only **3% measured latency**.
+- **Best single-trace estimator.** ReCUE improves on every single-trace baseline
+  (mean log-prob, self-certainty, DeepConf, P(True), and the passive TUP), and the
+  active ARC module alone already ranks above all prior single-trace estimators.
+- **Covers the consensus blind spot.** When sampled answers are unanimous, vote
+  fraction is uninformative by construction (AUROC 0.500) yet ~3% of unanimous
+  answers are still wrong. Adding ReCUE to SC@8 (**ConsensusFusion**) raises macro
+  AUROC from 0.878 to **0.916** at a matched eight-sample budget.
+- **Distinct from self-verification.** A single re-commitment agreement bit is
+  competitive with P(True); the full ARC view significantly surpasses it (+0.051),
+  and re-generating an answer carries information beyond teacher-forcing it.
 
 ## Layout
 
 ```text
-acd/                    core library
-  env.py                .env loading, paths, math answer parsing & verification
-  data.py               verifiable-answer datasets (GSM8K, MATH500, Minerva, Olympiad, AMC23)
-  generate.py           vLLM generation of reasoning traces (+ per-sample logprobs)   [CLI]
-  probe.py              intermediate-answer probe (identity trajectory)               [CLI]
-  features.py           answer-stabilization / confidence-dynamics features
-  baselines.py          single-pass UQ baselines (logprob, entropy, DeepConf, self-certainty)
-  metrics.py            AUROC / AURC / ECE / risk-at-coverage
-scripts/                runnable entrypoints & orchestration
-  run_probe_confidence.py   confidence-dynamics probe (answer + forced-answer logprob) [CLI]
-  run_ptrue.py              P(True) self-eval baseline                                 [CLI]
-  build_cache.py            derive labels / sampled-answers / features caches
-  build_matrix.sh           generate+probe a model×dataset matrix (reads .env)
-  run_analysis.sh           run all paper experiments over cached cells
-  matrix.txt                example job list for build_matrix.sh
-experiments/            main-paper analyses (main comparison, ablations, mechanism, variance, hybrid)
-analysis/               exploratory studies & negative results (extra probes, alternative baselines)
-docs/RESULTS.md         consolidated results & interpretation
+recue/                    core library
+  env.py                  .env loading, paths, math answer parsing & verification
+  data.py                 verifiable math datasets (GSM8K, MATH500, Minerva, Olympiad, AIME, AMC23)
+  data_nonmath.py         multiple-choice reasoning tasks (BBH, GPQA) for generality checks
+  generate.py             vLLM generation of primary trace + k samples (+ logprobs)   [CLI]
+  probe.py                re-elicitation probe at reasoning-prefix cuts               [CLI]
+  features.py             ARC / TUP feature construction from a single trace
+  baselines.py            single-trace UQ baselines (logprob, entropy, DeepConf, self-certainty)
+  metrics.py              AUROC / AURC / ECE / risk-at-coverage
+scripts/                  runnable entrypoints & orchestration
+  build_matrix.sh         generate -> probe -> confidence probe over a model×dataset queue
+  run_probe_confidence.py per-cut answer + forced-answer first-token logprob          [CLI]
+  run_probe_rebuttal.py   full-answer greedy decode with logprobs (ARC likelihood)    [CLI]
+  run_probe_teacherforce.py teacher-forced original-answer support (RQ2 control)      [CLI]
+  run_probe_multicue.py   3-cue robustness probe                                      [CLI]
+  run_decoding_matrix.py  primary×probe temperature matrix (RQ2)                      [CLI]
+  run_ptrue.py            P(True) self-evaluation baseline                            [CLI]
+  build_cache.py          derive labels / sampled-answers / feature caches
+  build_cdyn_cache.py     derive confidence-dynamics feature cache
+  run_analysis.sh         reproduce every paper number from cached generations (no GPU)
+  *_worker.sh             single-GPU queue runners; matrix*.txt are their job lists
+experiments/              cached analyses that produce the paper tables & figures
+visualization/            headline figures (Pareto, risk-coverage)
 ```
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt          # torch, vllm, transformers, scikit-learn, math_verify, ...
-cp .env.example .env                      # then edit paths (see below)
+cp .env.example .env                      # then edit the paths below
 ```
 
-All paths are read from a gitignored `.env` (anonymized; no absolute user paths in code):
+All paths are read from a gitignored `.env` (anonymized; no absolute user paths
+in code):
 
 ```ini
-MODELS_ROOT=/path/to/models          # dir of local model folders (names match --model)
-DATASETS_ROOT=/path/to/hf_hub_cache  # HuggingFace datasets cache
-EXP_ROOT=/path/to/experiment_outputs # all caches & results land here
+MODELS_ROOT=/path/to/models              # dir of local model folders (names match --model)
+DATASETS_ROOT=/path/to/hf_datasets_hub   # HuggingFace datasets cache
+EXP_ROOT=/path/to/experiment_outputs     # all caches, results, and logs land here
 ```
 
 ## Quick start
 
 ```bash
-# 1. generate reasoning traces + intermediate-answer/confidence probes for a matrix
+# 1. build the generation + probe matrix (GPU); idempotent / resumable
 CUDA_VISIBLE_DEVICES=0 bash scripts/build_matrix.sh scripts/matrix.txt
 
-# 2. run all analyses over whatever cells exist in $EXP_ROOT
+# 2. add the ARC likelihood, P(True), and teacher-forced probes for each cell
+CUDA_VISIBLE_DEVICES=0 bash scripts/rebuttal_worker.sh scripts/matrix.txt
+CUDA_VISIBLE_DEVICES=0 bash scripts/tforce_worker.sh  scripts/matrix.txt
+
+# 3. reproduce every paper number from the caches (no GPU)
 bash scripts/run_analysis.sh
 ```
 
 Or drive a single stage directly (everything is a `python -m` module):
 
 ```bash
-python -m acd.generate --model Qwen3-8B --dataset math500 --k 8 --tag math500_qwen8b_k8
-python -m acd.probe                 --model Qwen3-8B --gen-tag math500_qwen8b_k8
+python -m recue.generate --model Qwen3-8B --dataset math500 --k 8 --tag math500_qwen8b_k8
+python -m recue.probe    --model Qwen3-8B --gen-tag math500_qwen8b_k8
 python -m scripts.run_probe_confidence --model Qwen3-8B --gen-tag math500_qwen8b_k8
 python -m scripts.build_cache
-python -m experiments.main_comparison --tags math500_qwen8b_k8 --out $EXP_ROOT/main.json
+python -m experiments.recompute_headline
 ```
 
 ## Caches (under `$EXP_ROOT`)
 
-| dir | contents |
+| dir / file | contents |
 |-----|----------|
-| `gen/`      | reasoning traces + k self-consistency samples + logprobs |
-| `probe/`    | intermediate-answer trajectory (identity) |
-| `conf/`     | intermediate-answer + forced-answer confidence trajectory |
-| `labels/`   | deterministic correctness labels (`math_verify`) |
-| `sampans/`  | extracted answers of the k samples (for self-consistency) |
-| `feats/`, `cdyn/` | precomputed convergence / confidence-dynamics features |
-| `ptrue/`    | P(True) baseline scores |
+| `gen/`       | primary reasoning trace + k self-consistency samples + logprobs |
+| `probe/`     | re-elicited answers at reasoning-prefix cuts |
+| `conf/`      | per-cut answer + forced-answer first-token logprob |
+| `rebuttal/`  | full-answer greedy decode with token logprobs (ARC likelihood) |
+| `tforce/`    | teacher-forced original-answer support (RQ2 control) |
+| `ptrue/`     | P(True) self-evaluation baseline scores |
+| `decmatrix/` | primary×probe temperature-matrix regenerations (RQ2) |
+| `labels/`    | deterministic correctness labels (`math_verify` / exact-match) |
+| `sampans/`   | extracted answers of the k samples (for self-consistency) |
+| `feats/`, `cdyn/` | precomputed ARC / TUP feature caches |
+| `ladder_feats.npz`, `aime_feats.npz` | shared per-cell feature matrices consumed by the recompute scripts |
 
-Once caches exist, all `experiments/` and `analysis/` scripts recompute in seconds
-without any GPU.
+Once the caches exist, all `experiments/` scripts and `scripts/run_analysis.sh`
+recompute in seconds without a GPU.
+
+## Citation
+
+Paper title: *ReCUE: Answer Re-Commitment for Compute-Aware Uncertainty in
+Mathematical Reasoning Models*. (Anonymous submission; citation to be added.)
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

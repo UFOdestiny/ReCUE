@@ -10,9 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 
-from acd.env import EXP_ROOT, model_path, save_json
-from acd.probe import split_think, segment_steps, cut_points, extract_boxed_head
-from acd.generate import build_messages
+from recue.env import EXP_ROOT, model_path, save_json
+from recue.probe import split_think, segment_steps, cut_points, extract_boxed_head
+from recue.generate import build_messages
 
 
 def main():

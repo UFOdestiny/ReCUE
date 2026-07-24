@@ -4,8 +4,8 @@ Measures ACTUAL wall-clock cost on one GPU, not decoded-token ratios. For each
 method we time the marginal work over a shared pool of cached questions:
 
   primary        one full trace generation (the 1x reference)
-  chainuq_M{2,4,8}  primary trace + M anchored-answer probes (KV-cache REUSED)
-  chainuq_nocache   same but prefix caching DISABLED (isolates cache benefit)
+  recue_M{2,4,8}  primary trace + M anchored-answer probes (KV-cache REUSED)
+  recue_nocache   same but prefix caching DISABLED (isolates cache benefit)
   p_true         primary trace + one extra full forward pass (verify prompt)
   sc_{2,4,8}     k full generations
 
@@ -24,9 +24,9 @@ from pathlib import Path
 
 import numpy as np
 
-from acd.env import EXP_ROOT, model_path
-from acd.generate import build_messages
-from acd.probe import split_think, segment_steps, cut_points
+from recue.env import EXP_ROOT, model_path
+from recue.generate import build_messages
+from recue.probe import split_think, segment_steps, cut_points
 
 
 def pct(x, p):
@@ -65,7 +65,7 @@ def main():
     is_mc = gen[0].get("type") == "mc"
     prompts = [render(g["question"], is_mc) for g in gen]
 
-    # pre-build probe prompts (from cached traces) for chainuq timing
+    # pre-build probe prompts (from cached traces) for recue timing
     def probe_prompts_for(g, M):
         ptext = g["primary_text"]
         if "<think>" in ptext:
@@ -115,8 +115,8 @@ def main():
                              "full_gens": k, "probe_calls": 0, "extra_fwd": 0})
         return rows
 
-    # ---- chainuq: primary + M probes ----
-    def run_chainuq(M):
+    # ---- recue: primary + M probes ----
+    def run_recue(M):
         def _f(llm):
             sp_g = SamplingParams(n=1, temperature=0.7, top_p=0.95, max_tokens=args.max_tokens, seed=1234)
             sp_p = SamplingParams(n=1, temperature=0.0, max_tokens=args.probe_tokens, logprobs=1)
@@ -168,8 +168,8 @@ def main():
     # ---- run all ----
     bench("primary", lambda llm: run_primary(llm, 1))
     for M in (2, 4, 8):
-        bench(f"chainuq_M{M}", run_chainuq(M))
-    bench("chainuq_M8_nocache", run_chainuq(8), enable_cache=False)
+        bench(f"recue_M{M}", run_recue(M))
+    bench("recue_M8_nocache", run_recue(8), enable_cache=False)
     bench("p_true", run_ptrue)
     for k in (2, 4, 8):
         bench(f"sc_{k}", lambda llm, k=k: run_primary(llm, k, f"sc_{k}"))

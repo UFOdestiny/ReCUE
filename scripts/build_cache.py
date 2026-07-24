@@ -1,8 +1,8 @@
 import json,glob,os,numpy as np
-from acd.env import EXP_ROOT, extract_pred_math
-from acd import data as dv
-from acd import data_nonmath as dnm
-from acd import features as D
+from recue.env import EXP_ROOT, extract_pred_math
+from recue import data as dv
+from recue import data_nonmath as dnm
+from recue import features as D
 
 def _sample_ans(x):
     """Extract the per-sample answer for self-consistency: MC letter for mc rows,

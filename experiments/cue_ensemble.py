@@ -1,7 +1,7 @@
 """Cue-ensemble lever + probe robustness (P1-4), on multi-cue confmc caches.
 
 For each cut we have 3 semantically-equivalent cues, each giving (ans, first-token lp).
-Tests, per cell (5-seed OOF AUROC on ChainUQ-style features built from confmc):
+Tests, per cell (5-seed OOF AUROC on ReCUE-style features built from confmc):
   single_cue0/1/2 : trajectory features from each cue alone (robustness: mean/worst)
   cue_mean        : per-cut confidence = mean lp over cues (denoised trajectory)
   cue_ensemble    : cue_mean features + cross-cue AGREEMENT features
@@ -22,8 +22,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import StratifiedKFold
 
-from acd.env import EXP_ROOT
-from acd.features import _eq
+from recue.env import EXP_ROOT
+from recue.features import _eq
 
 SEEDS = [2026, 7, 13, 42, 100]
 

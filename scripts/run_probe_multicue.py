@@ -15,9 +15,9 @@ prefix) so marginal cost stays small.
 from __future__ import annotations
 
 import argparse, json
-from acd.env import EXP_ROOT, model_path, save_json
-from acd.probe import split_think, segment_steps, cut_points, extract_boxed_head
-from acd.generate import build_messages
+from recue.env import EXP_ROOT, model_path, save_json
+from recue.probe import split_think, segment_steps, cut_points, extract_boxed_head
+from recue.generate import build_messages
 
 CUES = ["The final answer is \\boxed{",
         "Therefore, the answer is \\boxed{",

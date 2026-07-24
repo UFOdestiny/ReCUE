@@ -15,8 +15,8 @@ import json
 import numpy as np
 from pathlib import Path
 
-from acd.env import EXP_ROOT, model_path, save_json, extract_pred_math
-from acd.generate import build_messages
+from recue.env import EXP_ROOT, model_path, save_json, extract_pred_math
+from recue.generate import build_messages
 
 
 def main():

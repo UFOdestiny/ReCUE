@@ -18,8 +18,8 @@ import os
 
 import numpy as np
 
-from acd.env import EXP_ROOT
-from acd.features import _eq
+from recue.env import EXP_ROOT
+from recue.features import _eq
 
 
 def conv_cdyn(rec):
