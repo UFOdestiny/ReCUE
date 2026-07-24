@@ -5,9 +5,9 @@ conv  = answer-identity convergence features  [agree, last_half, final_stable_ru
 cdyn  = answer-CONFIDENCE dynamics features    [mean_lp, last_lp, min_lp, slope,
         first-agree-conf, std_lp]
 
-This is exactly the feature construction used inline by experiments.main_comparison
-(conv_cdyn), factored out so every cell — including the new non-math cells — has a
-reproducible cdyn cache. Idempotent: skips cells whose cache already exists.
+Factored out of the per-cell analyses so every cell — including the non-math
+cells — has a reproducible ARC/TUP feature cache. Idempotent: skips cells whose
+cache already exists.
 """
 from __future__ import annotations
 
