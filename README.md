@@ -1,18 +1,17 @@
-# ReCUE: Single-Trace Uncertainty Quantification via Answer Re-Commitment
+# TrAC: Trace-Conditioned Answer Consistency for EfficientUncertainty Quantification in LLMs
 
 Judge-free, single-trace uncertainty quantification (UQ) for mathematical
-reasoning LLMs. ReCUE reads whether a model still **re-commits** to the answer it
+reasoning LLMs. TrAC reads whether a model still **re-commits** to the answer it
 returned, from **one completed reasoning trace**, instead of resampling many full
 trajectories.
+TrAC combines two orthogonal single-trace views under a shared lightweight head:
 
-ReCUE combines two orthogonal single-trace views under a shared lightweight head:
-
-- **ARC — Answer Re-Commitment (active).** Re-elicit a short answer at the
+- **PCE — Prefix-Conditioned Elicitation (active).** Re-elicit a short answer at the
   *completed* reasoning prefix (`The final answer is \boxed{...}`) and represent
   its **agreement** with the originally returned answer together with its
   **likelihood** and **confidence**. Because the reasoning prefix is unchanged,
   this reuses the vLLM KV cache and decodes only a short answer suffix — about
-  **3% added latency**, not a second generation.
+  **2% added latency**, not a second generation.
 - **TUP — Trace Uncertainty Profile (passive).** Summarize token-level
   uncertainty already available from the primary generation (binned log-prob and
   entropy shape, slopes, extrema, low-confidence fraction). No extra decoding.
