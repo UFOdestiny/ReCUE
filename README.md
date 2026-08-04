@@ -1,4 +1,4 @@
-# TrAC: Trace-Conditioned Answer Consistency for EfficientUncertainty Quantification in LLMs
+# TrAC: Trace-Conditioned Answer Consistency for Efficient Uncertainty Quantification in LLMs
 
 Judge-free, single-trace uncertainty quantification (UQ) for mathematical
 reasoning LLMs. TrAC reads whether a model still **re-commits** to the answer it
